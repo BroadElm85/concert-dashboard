@@ -12,6 +12,7 @@ const ConcertDashboard = () => {
   const [apiKey, setApiKey] = useState('');
   const [useRealData, setUseRealData] = useState(false);
   const [lastFetched, setLastFetched] = useState(null);
+  const [lastSearchTerm, setLastSearchTerm] = useState('');
 
   // Load saved API key
   useEffect(() => {
@@ -21,7 +22,58 @@ const ConcertDashboard = () => {
     }
   }, []);
 
-  // Fetch real concerts from Ticketmaster
+  // Filter events to music only
+  const filterMusicEvents = (events) => {
+    return events.filter(event => {
+      const classification = event.classifications?.[0];
+      const segment = classification?.segment?.name?.toLowerCase() || '';
+      const genre = classification?.genre?.name?.toLowerCase() || '';
+      const subGenre = classification?.subGenre?.name?.toLowerCase() || '';
+      
+      // Include only music events, exclude theater/sports/other
+      return segment === 'music' || 
+             genre.includes('rock') || 
+             genre.includes('pop') || 
+             genre.includes('country') || 
+             genre.includes('folk') || 
+             genre.includes('indie') || 
+             genre.includes('electronic') || 
+             genre.includes('hip') || 
+             genre.includes('rap') || 
+             genre.includes('jazz') || 
+             genre.includes('blues') || 
+             genre.includes('alternative') ||
+             subGenre.includes('rock') ||
+             subGenre.includes('pop') ||
+             subGenre.includes('country') ||
+             // Exclude obvious theater/broadway terms
+             (!event.name.toLowerCase().includes('hamilton') &&
+              !event.name.toLowerCase().includes('harry potter') &&
+              !event.name.toLowerCase().includes('broadway') &&
+              !event.name.toLowerCase().includes('musical') &&
+              !event.name.toLowerCase().includes('theater') &&
+              !event.name.toLowerCase().includes('theatre'));
+    });
+  };
+
+  // Convert Ticketmaster events to our format
+  const formatConcerts = (events) => {
+    return events.map(event => ({
+      id: `tm_${event.id}`,
+      artist: event.name,
+      venue: event._embedded?.venues?.[0]?.name || 'Unknown Venue',
+      date: event.dates.start.localDate,
+      time: event.dates.start.localTime || null,
+      genre: event.classifications?.[0]?.genre?.name || 'Music',
+      price: event.priceRanges?.[0] ? `$${event.priceRanges[0].min}-${event.priceRanges[0].max}` : 'Price TBA',
+      image: event.images?.[0]?.url || "https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=400&h=300&fit=crop",
+      spotifyMatch: false,
+      venueType: "Unknown",
+      ticketUrl: event.url
+    }));
+  };
+
+  // Fetch all music concerts from NYC
   const fetchRealConcerts = async () => {
     if (!apiKey) {
       alert('Please enter your Ticketmaster API key in Settings first!');
@@ -30,8 +82,9 @@ const ConcertDashboard = () => {
     }
 
     setLoading(true);
+    setLastSearchTerm('');
     try {
-      const response = await fetch(`https://app.ticketmaster.com/discovery/v2/events.json?city=New York&apikey=${apiKey}&size=50`);
+      const response = await fetch(`https://app.ticketmaster.com/discovery/v2/events.json?city=New York&classificationName=music&apikey=${apiKey}&size=50&sort=date,asc`);
       
       if (!response.ok) {
         throw new Error(`API Error: ${response.status}`);
@@ -40,30 +93,80 @@ const ConcertDashboard = () => {
       const data = await response.json();
       
       if (data._embedded?.events) {
-        const concerts = data._embedded.events.map(event => ({
-          id: `tm_${event.id}`,
-          artist: event.name,
-          venue: event._embedded?.venues?.[0]?.name || 'Unknown Venue',
-          date: event.dates.start.localDate,
-          time: event.dates.start.localTime || null,
-          genre: event.classifications?.[0]?.genre?.name || 'Music',
-          price: event.priceRanges?.[0] ? `$${event.priceRanges[0].min}-${event.priceRanges[0].max}` : 'Price TBA',
-          image: event.images?.[0]?.url || "https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=400&h=300&fit=crop",
-          spotifyMatch: false,
-          venueType: "Unknown",
-          ticketUrl: event.url
-        }));
+        const musicEvents = filterMusicEvents(data._embedded.events);
+        const concerts = formatConcerts(musicEvents);
         
         setRealConcerts(concerts);
         setUseRealData(true);
         setLastFetched(new Date());
-        console.log(`✅ Fetched ${concerts.length} real concerts`);
+        console.log(`✅ Fetched ${concerts.length} music concerts`);
+        
+        if (concerts.length === 0) {
+          alert('No music concerts found in NYC. Try searching for a specific artist.');
+        }
+      } else {
+        alert('No concerts found in NYC area.');
       }
     } catch (error) {
       console.error('Error fetching real concerts:', error);
       alert('Failed to fetch concerts. Please check your API key.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Search for specific artist on Ticketmaster
+  const searchArtist = async (artistName) => {
+    if (!apiKey) {
+      alert('Please enter your Ticketmaster API key in Settings first!');
+      setShowSettings(true);
+      return;
+    }
+
+    if (!artistName.trim()) {
+      return;
+    }
+
+    setLoading(true);
+    setLastSearchTerm(artistName);
+    try {
+      // Search for the artist specifically
+      const response = await fetch(`https://app.ticketmaster.com/discovery/v2/events.json?keyword=${encodeURIComponent(artistName)}&classificationName=music&city=New York&stateCode=NY&apikey=${apiKey}&size=20&sort=date,asc`);
+      
+      if (!response.ok) {
+        throw new Error(`API Error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data._embedded?.events) {
+        const musicEvents = filterMusicEvents(data._embedded.events);
+        const concerts = formatConcerts(musicEvents);
+        
+        setRealConcerts(concerts);
+        setUseRealData(true);
+        setLastFetched(new Date());
+        console.log(`✅ Found ${concerts.length} events for ${artistName}`);
+        
+        if (concerts.length === 0) {
+          alert(`No music concerts found for "${artistName}" in NYC area. They might not be touring here currently.`);
+        }
+      } else {
+        alert(`No concerts found for "${artistName}" in NYC area.`);
+        // Don't clear existing data, just show the message
+      }
+    } catch (error) {
+      console.error('Error searching for artist:', error);
+      alert('Failed to search. Please check your API key.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle search input
+  const handleSearch = (e) => {
+    if (e.key === 'Enter' && searchTerm.trim()) {
+      searchArtist(searchTerm.trim());
     }
   };
 
@@ -92,6 +195,18 @@ const ConcertDashboard = () => {
       image: "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=400&h=300&fit=crop",
       spotifyMatch: true,
       venueType: "Mid-size"
+    },
+    {
+      id: 3,
+      artist: "Tyler Childers",
+      venue: "Brooklyn Paramount",
+      date: "2025-08-15",
+      time: "7:30 PM",
+      genre: "Country",
+      price: "$65-85",
+      image: "https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=400&h=300&fit=crop",
+      spotifyMatch: true,
+      venueType: "Large"
     }
   ];
 
@@ -166,7 +281,14 @@ const ConcertDashboard = () => {
     </div>
   );
 
+  // Filter concerts based on local search term and genre
   const filteredConcerts = (useRealData ? realConcerts : mockLocalConcerts).filter(concert => {
+    if (lastSearchTerm) {
+      // If we just searched for an artist, don't filter further - show the search results
+      return true;
+    }
+    
+    // Local filtering for browsing
     const matchesSearch = concert.artist.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          concert.venue.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesGenre = selectedGenre === 'all' || concert.genre.toLowerCase().includes(selectedGenre.toLowerCase());
@@ -213,8 +335,9 @@ const ConcertDashboard = () => {
                   </h3>
                   <p className="text-amber-800 text-sm">
                     {useRealData ? (
-                      <>Currently showing live concert data from Ticketmaster API. 
-                      Last updated: {lastFetched?.toLocaleTimeString()}</>
+                      <>Currently showing live music concerts from Ticketmaster API. 
+                      {lastSearchTerm && <> Searched for: "{lastSearchTerm}".</>}
+                      {' '}Last updated: {lastFetched?.toLocaleTimeString()}</>
                     ) : (
                       <>This dashboard currently displays sample concert data. 
                       Click "Fetch Real Data" to connect to Ticketmaster API for live concert listings.</>
@@ -230,7 +353,7 @@ const ConcertDashboard = () => {
                     {loading ? (
                       <>
                         <RefreshCw size={16} className="animate-spin" />
-                        Fetching...
+                        {lastSearchTerm ? 'Searching...' : 'Fetching...'}
                       </>
                     ) : (
                       <>
@@ -241,7 +364,10 @@ const ConcertDashboard = () => {
                   </button>
                   {useRealData && (
                     <button
-                      onClick={() => setUseRealData(false)}
+                      onClick={() => {
+                        setUseRealData(false);
+                        setLastSearchTerm('');
+                      }}
                       className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm transition-colors"
                     >
                       Use Sample Data
@@ -259,34 +385,76 @@ const ConcertDashboard = () => {
               <Search className="absolute left-3 top-3 text-gray-400" size={20} />
               <input
                 type="text"
-                placeholder="Search artists, venues..."
+                placeholder={useRealData ? "Press Enter to search Ticketmaster for artists (e.g., 'Cole Swindell')..." : "Search artists, venues..."}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
+                onKeyPress={useRealData ? handleSearch : undefined}
                 className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
             
-            <select
-              value={selectedGenre}
-              onChange={(e) => setSelectedGenre(e.target.value)}
-              className="px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="all">All Genres</option>
-              <option value="indie">Indie</option>
-              <option value="rock">Rock</option>
-              <option value="pop">Pop</option>
-              <option value="country">Country</option>
-            </select>
+            <div className="flex gap-2">
+              <select
+                value={selectedGenre}
+                onChange={(e) => setSelectedGenre(e.target.value)}
+                className="px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="all">All Genres</option>
+                <option value="indie">Indie</option>
+                <option value="rock">Rock</option>
+                <option value="pop">Pop</option>
+                <option value="country">Country</option>
+                <option value="folk">Folk</option>
+                <option value="electronic">Electronic</option>
+              </select>
+              
+              {lastSearchTerm && useRealData && (
+                <button
+                  onClick={() => {
+                    setLastSearchTerm('');
+                    setSearchTerm('');
+                    fetchRealConcerts();
+                  }}
+                  className="px-4 py-3 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors"
+                >
+                  Clear Search
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
         <div>
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold text-gray-900">
-              {useRealData ? 'Live NYC Concerts' : 'Sample Concerts'}
+              {useRealData ? (lastSearchTerm ? `Search Results for "${lastSearchTerm}"` : 'Live NYC Music Concerts') : 'Sample Concerts'}
             </h2>
             <span className="text-sm text-gray-600">{filteredConcerts.length} concerts found</span>
           </div>
+          
+          {filteredConcerts.length === 0 && useRealData && (
+            <div className="text-center py-12">
+              <div className="bg-gray-100 rounded-full w-24 h-24 flex items-center justify-center mx-auto mb-4">
+                <Search className="text-gray-400" size={32} />
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No concerts found</h3>
+              <p className="text-gray-600 mb-4">
+                {lastSearchTerm 
+                  ? `No music concerts found for "${lastSearchTerm}" in NYC area.` 
+                  : 'No music concerts found in NYC area right now.'}
+              </p>
+              <button
+                onClick={() => {
+                  setSearchTerm('');
+                  setLastSearchTerm('');
+                  fetchRealConcerts();
+                }}
+                className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-colors"
+              >
+                Show All Concerts
+              </button>
+            </div>
+          )}
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredConcerts.map(concert => (

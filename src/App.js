@@ -175,7 +175,6 @@ const ConcertDashboard = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-      {/* Header */}
       <header className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
@@ -201,7 +200,6 @@ const ConcertDashboard = () => {
       </header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Data Status */}
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-8">
           <div className="flex items-start gap-3">
             <div className="bg-amber-500 text-white p-1 rounded-full mt-0.5">
@@ -255,7 +253,6 @@ const ConcertDashboard = () => {
           </div>
         </div>
 
-        {/* Search */}
         <div className="bg-white rounded-xl shadow-sm p-6 mb-8">
           <div className="flex flex-col md:flex-row gap-4">
             <div className="relative flex-1">
@@ -283,7 +280,6 @@ const ConcertDashboard = () => {
           </div>
         </div>
 
-        {/* Concerts */}
         <div>
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold text-gray-900">
@@ -292,4 +288,61 @@ const ConcertDashboard = () => {
             <span className="text-sm text-gray-600">{filteredConcerts.length} concerts found</span>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredConcerts.map(concert => (
+              <ConcertCard key={concert.id} concert={concert} />
+            ))}
+          </div>
+        </div>
+
+        {showSettings && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-xl max-w-md w-full p-6">
+              <h3 className="text-xl font-semibold text-gray-900 mb-4">Settings</h3>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Ticketmaster API Key
+                  </label>
+                  <input
+                    type="password"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    placeholder="Enter your Ticketmaster API key"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Your key: YwPWZEoGidnvsIlUyaLM1EJc3yxQjZAG
+                  </p>
+                </div>
+              </div>
+              
+              <div className="flex gap-2 mt-6">
+                <button 
+                  onClick={() => setShowSettings(false)}
+                  className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={() => {
+                    setShowSettings(false);
+                    if (apiKey) {
+                      localStorage.setItem('ticketmaster_api_key', apiKey);
+                    }
+                  }}
+                  className="flex-1 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default ConcertDashboard;
